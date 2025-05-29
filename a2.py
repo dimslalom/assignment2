@@ -359,16 +359,40 @@ class Wyrm(Minion):
     def choose_target(self, ally_hero: Entity, enemy_hero: Entity, ally_minions: list[Entity], enemy_minions: list[Entity]) -> Entity:
         """
         Chooses the target entity for the Wyrm's effect.
+        A Wyrm will choose the allied entity (including itself if on board) with the lowest health.
+        If multiple entities have the lowest health, if one of the tied entities is the allied hero,
+        the allied hero should be selected. Otherwise, the leftmost tied minion should be selected.
         """
-        # Find the entity with the lowest health
-        min_health_entity = self
-        for entity in ally_minions + [ally_hero]:
-            if entity.get_health() < min_health_entity.get_health():
-                min_health_entity = entity
-            elif entity.get_health() == min_health_entity.get_health():
-                # If the health is the same, prefer the hero
-                if isinstance(entity, Hero) and not isinstance(min_health_entity, Hero):
-                    min_health_entity = entity
+        potential_targets = []
+        
+        # Create a list of all allied entities to consider
+        all_allies = []
+        if self in ally_minions: # Ensure the Wyrm itself is considered if it's on the board
+            all_allies.extend(ally_minions)
+        else: # If the Wyrm is not in ally_minions
+            all_allies.append(self) # Add itself
+            all_allies.extend(ally_minions) # Then other minions
+        
+        all_allies.append(ally_hero)
+
+        if not all_allies:
+            return None # Should not happen if Wyrm or hero exists
+
+        min_health_entity = all_allies[0] # Start with the first ally
+
+        for i in range(1, len(all_allies)):
+            current_entity = all_allies[i]
+            if current_entity.get_health() < min_health_entity.get_health():
+                min_health_entity = current_entity
+            elif current_entity.get_health() == min_health_entity.get_health():
+                # Tie-breaking:
+                # 1. If current_entity is Hero and min_health_entity is not Hero, prefer current_entity (Hero).
+                if isinstance(current_entity, Hero) and not isinstance(min_health_entity, Hero):
+                    min_health_entity = current_entity
+                # 2. If both are Minions, min_health_entity (being earlier in the list) is already the leftmost.
+                # 3. If min_health_entity is Hero and current_entity is Minion, keep Hero (already preferred).
+                # No change needed for cases 2 and 3 due to iteration order and hero preference.
+        
         return min_health_entity
 
 # Task 10
@@ -382,7 +406,14 @@ class Raptor(Minion):
         self.name = RAPTOR_NAME
         self.description = RAPTOR_DESC
         self.cost = 2
-        self.effect = {DAMAGE: health}
+        self.effect = {DAMAGE: self.health} 
+
+    def get_effect(self) -> dict[str, int]:
+        """
+        Returns the effect of this card, with damage equal to current health.
+        """
+        return {DAMAGE: self.health} # Dynamically uses current health
+
     def get_symbol(self) -> str:
         """
         Returns the symbol of this card.
@@ -473,6 +504,17 @@ class HearthModel():
         Return true if and only if the player has lost the game.
         """
         return not self.player.is_alive()
+    
+    def remove_defeated_entities(self):
+        """
+        Removes defeated minions from both player's and enemy's active minion lists.
+        """
+        self.active_player_minions = [
+            minion for minion in self.active_player_minions if minion.is_alive()
+        ]
+        self.active_enemy_minions = [
+            minion for minion in self.active_enemy_minions if minion.is_alive()
+        ]
 
     def play_card(self, card: Card, target: Entity) -> bool:
         """
@@ -496,6 +538,7 @@ class HearthModel():
             acting_hero.spend_energy(card.get_cost())
             if card in acting_hero.get_hand(): # Ensure card is in hand
                 acting_hero.get_hand().remove(card)
+            
             acting_hero_minions.append(card) # Add new minion to the right
             
             if card.get_effect():
@@ -506,7 +549,7 @@ class HearthModel():
                         elif effect_type == SHIELD: chosen_target_for_effect.apply_shield(amount)
                         elif effect_type == HEALTH: chosen_target_for_effect.apply_health(amount)
             
-            self._remove_defeated_entities()
+            self.remove_defeated_entities()
             return True
         else: # Non-permanent card (spell)
             if not target: 
@@ -521,7 +564,7 @@ class HearthModel():
                 elif effect_type == SHIELD: target.apply_shield(amount)
                 elif effect_type == HEALTH: target.apply_health(amount)
             
-            self._remove_defeated_entities()
+            self.remove_defeated_entities()
             return True
     
     def enemy_play_card(self, card: Card, target: Entity) -> bool:
@@ -546,6 +589,7 @@ class HearthModel():
             acting_hero.spend_energy(card.get_cost())
             if card in acting_hero.get_hand(): # Ensure card is in hand
                 acting_hero.get_hand().remove(card)
+
             acting_hero_minions.append(card) # Add new minion to the right
             
             if card.get_effect():
@@ -556,7 +600,7 @@ class HearthModel():
                         elif effect_type == SHIELD: chosen_target_for_effect.apply_shield(amount)
                         elif effect_type == HEALTH: chosen_target_for_effect.apply_health(amount)
             
-            self._remove_defeated_entities()
+            self.remove_defeated_entities()
             return True
         else: # Non-permanent card (spell)
             if not target:
@@ -571,19 +615,10 @@ class HearthModel():
                 elif effect_type == SHIELD: target.apply_shield(amount)
                 elif effect_type == HEALTH: target.apply_health(amount)
             
-            self._remove_defeated_entities()
+            self.remove_defeated_entities()
             return True
 
-    def _remove_defeated_entities(self):
-        """
-        Removes defeated minions from both player's and enemy's active minion lists.
-        """
-        self.active_player_minions = [
-            minion for minion in self.active_player_minions if minion.is_alive()
-        ]
-        self.active_enemy_minions = [
-            minion for minion in self.active_enemy_minions if minion.is_alive()
-        ]
+    
 
     def discard_card(self, card: Card) -> None:
         """
@@ -603,11 +638,12 @@ class HearthModel():
         enemy_played_card_names = []
 
         def apply_effects_and_handle_deaths(effect_dict: dict, target_entity: Entity, model_self: 'HearthModel'):
+            model_self.remove_defeated_entities()
             if target_entity and effect_dict:
                 if HEALTH in effect_dict: target_entity.apply_health(effect_dict[HEALTH])
                 if SHIELD in effect_dict: target_entity.apply_shield(effect_dict[SHIELD])
                 if DAMAGE in effect_dict: target_entity.apply_damage(effect_dict[DAMAGE])
-            model_self._remove_defeated_entities()
+            model_self.remove_defeated_entities()
 
         # 1. Player's minions attack
         for minion in list(self.get_player_minions()): # Iterate copy as list might change
@@ -627,12 +663,12 @@ class HearthModel():
             if not self.enemy.is_alive(): break
             played_a_card_this_scan = False
             
-            hand_idx = 0
-            while hand_idx < len(self.enemy.get_hand()): # Iterate through current hand
-                card_to_play = self.enemy.get_hand()[hand_idx]
+            hand_index = 0
+            while hand_index < len(self.enemy.get_hand()): # Iterate through current hand
+                card_to_play = self.enemy.get_hand()[hand_index]
 
                 if card_to_play.get_cost() > self.enemy.get_energy():
-                    hand_idx += 1
+                    hand_index += 1
                     continue
 
                 chosen_target_for_enemy_spell = None
@@ -649,9 +685,9 @@ class HearthModel():
                     enemy_played_card_names.append(card_to_play.get_name())
                     played_a_card_this_scan = True
                     # Successfully played a card, restart scan from the beginning of the (modified) hand
-                    break  # Breaks from inner while (hand_idx loop)
+                    break  # Breaks from inner while (hand_index loop)
                 else:
-                    hand_idx += 1 # Could not play this card, try next
+                    hand_index += 1 # Could not play this card, try next
 
             if not played_a_card_this_scan: # Full scan of hand, no card played
                 still_can_play = False # Exit outer while loop
@@ -672,29 +708,26 @@ class HearthModel():
             self.player.new_turn()
 
         return enemy_played_card_names
-        
     
+# Task 12
+
+
+def play_game(initial_save_file: str) -> None:
+    """
+    Constructs the Hearthstone controller and starts the game loop.
+    """
+    # controller = Hearthstone(initial_save_file)
+    # controller.run_game_loop()
+
+
 
 def main() -> None:
     """
     Main function to run the Hearthstone game simulation.
     """
-    # Initialize the game state
-    player_deck = CardDeck([Card(), Card(), Shield(), Heal(), Fireball(6)])
-    player = Hero(4, 5, 3, player_deck, [])
-    enemy_deck = CardDeck([Card(), Card(), Shield(), Heal(), Fireball(6)])
-    enemy = Hero(4, 5, 3, enemy_deck, [])
-    active_player_minions = [Minion(2, 1), Minion(3, 0)]
-    active_enemy_minions = [Minion(2, 1), Minion(3, 0)]
-    
-    # Create the HearthModel
-    model = HearthModel(player, active_player_minions, enemy, active_enemy_minions)
-    
-    # Create the HearthView
-    view = HearthView(model)
-    
-    # Run the game loop
-    view.run()
+    # Default initial file, can be changed or made configurable (e.g. sys.argv)
+    initial_file = "levels/deck1.txt" 
+    play_game(initial_file)
 
 
 if __name__ == "__main__":
