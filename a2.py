@@ -407,88 +407,294 @@ class Raptor(Minion):
 class HearthModel():
     def __init__(self, player: Hero, active_player_minions: list[Minion], enemy: Hero, active_enemy_minions: list[Minion]):
         """
-        Initializes HearthModel with player, enemy, 
+        Initializes HearthModel with player, enemy,
         and their active minions.
         """
         self.player = player
         self.active_player_minions = active_player_minions
         self.enemy = enemy
         self.active_enemy_minions = active_enemy_minions
+
     def __str__(self) -> str:
         """
-        Return player, active player minions, enemy, and 
-        active enemy minions as a formatted string.
+        Returns a string representation of the game state.
+        Format: player_hero|player_minions|enemy_hero|enemy_minions
+        Minions: symbol,health,shield (semicolon separated list)
         """
         player_str = str(self.player)
-        active_player_minions_str = ";".join(str(minion) for minion in self.active_player_minions)
+        player_minions_str = ";".join([f"{minion.get_symbol()},{minion.get_health()},{minion.get_shield()}" for minion in self.active_player_minions])
         enemy_str = str(self.enemy)
-        active_enemy_minions_str = ";".join(str(minion) for minion in self.active_enemy_minions)
-        return f"{player_str}|{active_player_minions_str}|{enemy_str}|{active_enemy_minions_str}"
+        enemy_minions_str = ";".join([f"{minion.get_symbol()},{minion.get_health()},{minion.get_shield()}" for minion in self.active_enemy_minions])
+        
+        return f"{player_str}|{player_minions_str}|{enemy_str}|{enemy_minions_str}"
+
     def __repr__(self) -> str:
         """
         Returns a string which could be copied and pasted into
         a REPL to construct a new instance identical to self.
         """
-        return f"{self.__class__.__name__}({self.player}, {self.active_player_minions}, {self.enemy}, {self.active_enemy_minions})"
+        return (f"{self.__class__.__name__}({repr(self.player)}, {repr(self.active_player_minions)}, "
+                f"{repr(self.enemy)}, {repr(self.active_enemy_minions)})")
+
     def get_player(self) -> Hero:
         """
         Returns the player.
         """
         return self.player
+
     def get_enemy(self) -> Hero:
         """
         Returns the enemy.
         """
         return self.enemy
-    def get_active_player_minions(self) -> list[Minion]:
+
+    def get_player_minions(self) -> list[Minion]:
         """
-        Returns the active player minions. Minions should appear in order 
+        Returns the active player minions. Minions should appear in order
         from leftmost minion slot to rightmost minion slot.
         """
         return self.active_player_minions
-    def get_active_enemy_minions(self) -> list[Minion]:
+
+    def get_enemy_minions(self) -> list[Minion]:
         """
         Returns the active enemy minions. Minions should appear in order
         from leftmost minion slot to rightmost minion slot.
         """
         return self.active_enemy_minions
+
     def has_won(self) -> bool:
         """
         Return true if and only if the player has won the game.
         """
         return not self.enemy.is_alive() and self.player.is_alive()
+
     def has_lost(self) -> bool:
         """
         Return true if and only if the player has lost the game.
         """
         return not self.player.is_alive()
+
     def play_card(self, card: Card, target: Entity) -> bool:
         """
-        Attempts to play the specified card on the player’s behalf. Table 2 Specifies the actions that must occur when an attempt is made to play a card. Returns whether the card was successfully played or not. The target argument will be ignored if the specified card is permanent. If a minion is defeated, it should be removed from the game, and any remaining minions within the respective minion slots should be moved one slot left if able.
+        Attempts to play the specified card by the player.
+        Returns True if successful, False otherwise.
+        Implements minion slot replacement if board is full.
         """
-        if card.get_cost() > self.player.get_energy():
+        acting_hero = self.player
+        
+        if card.get_cost() > acting_hero.get_energy():
             return False
+
+        acting_hero_minions = self.active_player_minions
+        opponent_hero = self.enemy
+        opponent_minions = self.active_enemy_minions
+
         if card.is_permanent():
-            target = card.choose_target(self.player, self.enemy, self.active_player_minions, self.active_enemy_minions)
-        self.player.spend_energy(card.get_cost())
-        for effect in card.get_effect():
-            if effect == DAMAGE:
-                target.apply_damage(card.get_effect()[DAMAGE])
-            elif effect == SHIELD:
-                target.apply_shield(card.get_effect()[SHIELD])
-            elif effect == HEALTH:
-                target.apply_health(card.get_effect()[HEALTH])
-        for minion in self.active_player_minions + self.active_enemy_minions:
-            if not minion.is_alive():
-                if minion in self.active_player_minions:
-                    self.active_player_minions.remove(minion)
+            if len(acting_hero_minions) >= MAX_MINIONS:
+                acting_hero_minions.pop(0) # Remove leftmost minion
+            
+            acting_hero.spend_energy(card.get_cost())
+            if card in acting_hero.get_hand(): # Ensure card is in hand
+                acting_hero.get_hand().remove(card)
+            acting_hero_minions.append(card) # Add new minion to the right
+            
+            if card.get_effect():
+                chosen_target_for_effect = card.choose_target(acting_hero, opponent_hero, acting_hero_minions, opponent_minions)
+                if chosen_target_for_effect:
+                    for effect_type, amount in card.get_effect().items():
+                        if effect_type == DAMAGE: chosen_target_for_effect.apply_damage(amount)
+                        elif effect_type == SHIELD: chosen_target_for_effect.apply_shield(amount)
+                        elif effect_type == HEALTH: chosen_target_for_effect.apply_health(amount)
+            
+            self._remove_defeated_entities()
+            return True
+        else: # Non-permanent card (spell)
+            if not target: 
+                return False # Spells generally need a target
+            
+            acting_hero.spend_energy(card.get_cost())
+            if card in acting_hero.get_hand(): # Ensure card is in hand
+                acting_hero.get_hand().remove(card)
+
+            for effect_type, amount in card.get_effect().items():
+                if effect_type == DAMAGE: target.apply_damage(amount)
+                elif effect_type == SHIELD: target.apply_shield(amount)
+                elif effect_type == HEALTH: target.apply_health(amount)
+            
+            self._remove_defeated_entities()
+            return True
+    
+    def enemy_play_card(self, card: Card, target: Entity) -> bool:
+        """
+        Helper method for the enemy to play a card.
+        Returns True if successful, False otherwise.
+        Implements minion slot replacement if board is full.
+        """
+        acting_hero = self.enemy
+
+        if card.get_cost() > acting_hero.get_energy():
+            return False
+
+        acting_hero_minions = self.active_enemy_minions
+        opponent_hero = self.player
+        opponent_minions = self.active_player_minions
+
+        if card.is_permanent():
+            if len(acting_hero_minions) >= MAX_MINIONS:
+                acting_hero_minions.pop(0) # Remove leftmost minion
+            
+            acting_hero.spend_energy(card.get_cost())
+            if card in acting_hero.get_hand(): # Ensure card is in hand
+                acting_hero.get_hand().remove(card)
+            acting_hero_minions.append(card) # Add new minion to the right
+            
+            if card.get_effect():
+                chosen_target_for_effect = card.choose_target(acting_hero, opponent_hero, acting_hero_minions, opponent_minions)
+                if chosen_target_for_effect:
+                    for effect_type, amount in card.get_effect().items():
+                        if effect_type == DAMAGE: chosen_target_for_effect.apply_damage(amount)
+                        elif effect_type == SHIELD: chosen_target_for_effect.apply_shield(amount)
+                        elif effect_type == HEALTH: chosen_target_for_effect.apply_health(amount)
+            
+            self._remove_defeated_entities()
+            return True
+        else: # Non-permanent card (spell)
+            if not target:
+                return False # Spells generally need a target
+            
+            acting_hero.spend_energy(card.get_cost())
+            if card in acting_hero.get_hand(): # Ensure card is in hand
+                acting_hero.get_hand().remove(card)
+
+            for effect_type, amount in card.get_effect().items():
+                if effect_type == DAMAGE: target.apply_damage(amount)
+                elif effect_type == SHIELD: target.apply_shield(amount)
+                elif effect_type == HEALTH: target.apply_health(amount)
+            
+            self._remove_defeated_entities()
+            return True
+
+    def _remove_defeated_entities(self):
+        """
+        Removes defeated minions from both player's and enemy's active minion lists.
+        """
+        self.active_player_minions = [
+            minion for minion in self.active_player_minions if minion.is_alive()
+        ]
+        self.active_enemy_minions = [
+            minion for minion in self.active_enemy_minions if minion.is_alive()
+        ]
+
+    def discard_card(self, card: Card) -> None:
+        """
+        Discards the specified card from the player's hand then
+        add it to the bottom of the player’s deck
+        """
+        if card in self.player.get_hand():
+            self.player.get_hand().remove(card)
+            self.player.get_deck().add_card(card)
+
+
+    def end_turn(self) -> list[str]:
+        """
+        Handles the sequence of actions at the end of a turn, including minion attacks
+        and the enemy's turn.
+        """
+        enemy_played_card_names = []
+
+        def apply_effects_and_handle_deaths(effect_dict: dict, target_entity: Entity, model_self: 'HearthModel'):
+            if target_entity and effect_dict:
+                if HEALTH in effect_dict: target_entity.apply_health(effect_dict[HEALTH])
+                if SHIELD in effect_dict: target_entity.apply_shield(effect_dict[SHIELD])
+                if DAMAGE in effect_dict: target_entity.apply_damage(effect_dict[DAMAGE])
+            model_self._remove_defeated_entities()
+
+        # 1. Player's minions attack
+        for minion in list(self.get_player_minions()): # Iterate copy as list might change
+            if not minion.is_alive(): continue
+            target = minion.choose_target(self.player, self.enemy, self.active_player_minions, self.active_enemy_minions)
+            if target:
+                apply_effects_and_handle_deaths(minion.get_effect(), target, self)
+            if self.has_won() or self.has_lost(): return enemy_played_card_names
+
+        # 2. Enemy hero: new turn sequence
+        self.enemy.new_turn()
+        if not self.enemy.is_alive(): return enemy_played_card_names # Check after draw
+
+        # 3. Enemy hero plays cards
+        still_can_play = True
+        while still_can_play: # Loop to allow restarting hand scan
+            if not self.enemy.is_alive(): break
+            played_a_card_this_scan = False
+            
+            hand_idx = 0
+            while hand_idx < len(self.enemy.get_hand()): # Iterate through current hand
+                card_to_play = self.enemy.get_hand()[hand_idx]
+
+                if card_to_play.get_cost() > self.enemy.get_energy():
+                    hand_idx += 1
+                    continue
+
+                chosen_target_for_enemy_spell = None
+                if not card_to_play.is_permanent(): # Spell card targeting
+                    effect = card_to_play.get_effect()
+                    if DAMAGE in effect and self.player.is_alive():
+                        chosen_target_for_enemy_spell = self.player
+                    elif self.enemy.is_alive(): # Otherwise, target self if alive
+                        chosen_target_for_enemy_spell = self.enemy
+                # For permanent cards, target for enemy_play_card is effectively the board slot;
+                # on-play effects use minion's own choose_target.
+
+                if self.enemy_play_card(card_to_play, chosen_target_for_enemy_spell):
+                    enemy_played_card_names.append(card_to_play.get_name())
+                    played_a_card_this_scan = True
+                    # Successfully played a card, restart scan from the beginning of the (modified) hand
+                    break  # Breaks from inner while (hand_idx loop)
                 else:
-                    self.active_enemy_minions.remove(minion)
+                    hand_idx += 1 # Could not play this card, try next
+
+            if not played_a_card_this_scan: # Full scan of hand, no card played
+                still_can_play = False # Exit outer while loop
+
+            if self.has_won() or self.has_lost(): return enemy_played_card_names
+        
+        # 4. Enemy's minions attack
+        for minion in list(self.get_enemy_minions()): # Iterate copy
+            if not minion.is_alive(): continue
+            if not self.player.is_alive() and not any(m.is_alive() for m in self.active_player_minions): break # No valid targets
+            target = minion.choose_target(self.enemy, self.player, self.active_enemy_minions, self.active_player_minions)
+            if target:
+                apply_effects_and_handle_deaths(minion.get_effect(), target, self)
+            if self.has_won() or self.has_lost(): return enemy_played_card_names
+
+        # 5. Player: new turn sequence (if game not over)
+        if self.player.is_alive() and not (self.has_won() or self.has_lost()):
+            self.player.new_turn()
+
+        return enemy_played_card_names
+        
     
 
 def main() -> None:
-    Card1 = Card(name="Fireball", description="Deal 6 damage to a taget", cost=4, effect={DAMAGE:6}, type="Spell")
-    Card2 = Card(name="Fire Elemental", description="Deal 3 damage to a target.", cost=5, effect={DAMAGE:3}, type="Minion")
+    """
+    Main function to run the Hearthstone game simulation.
+    """
+    # Initialize the game state
+    player_deck = CardDeck([Card(), Card(), Shield(), Heal(), Fireball(6)])
+    player = Hero(4, 5, 3, player_deck, [])
+    enemy_deck = CardDeck([Card(), Card(), Shield(), Heal(), Fireball(6)])
+    enemy = Hero(4, 5, 3, enemy_deck, [])
+    active_player_minions = [Minion(2, 1), Minion(3, 0)]
+    active_enemy_minions = [Minion(2, 1), Minion(3, 0)]
+    
+    # Create the HearthModel
+    model = HearthModel(player, active_player_minions, enemy, active_enemy_minions)
+    
+    # Create the HearthView
+    view = HearthView(model)
+    
+    # Run the game loop
+    view.run()
 
 
 if __name__ == "__main__":
