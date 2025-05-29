@@ -363,9 +363,8 @@ class Wyrm(Minion):
         If multiple entities have the lowest health, if one of the tied entities is the allied hero,
         the allied hero should be selected. Otherwise, the leftmost tied minion should be selected.
         """
-        ally_minions = [m for m in ally_minions]
         all_ally_entities = [ally_hero] + ally_minions
-        
+
         # Find the entity with the lowest health
         all_ally_entities_health = [e.get_health() for e in all_ally_entities]
         lowest_health = min(all_ally_entities_health)
@@ -404,24 +403,14 @@ class Raptor(Minion):
         The Raptor will choose the enemy minion with the highest health. 
         If there is no such minion, select the enemy hero. Leftmost minion is selected in case of a tie.
         """
-        living_enemy_minions = [m for m in enemy_minions if m.is_alive()]
-
-        if not living_enemy_minions:
-            # No living enemy minions, target the enemy hero.
-            # Consider if enemy_hero must be alive to be targeted, based on game rules/tests.
-            # If enemy_hero must be alive: if enemy_hero.is_alive(): return enemy_hero else: return None
-            return enemy_hero 
-
-        # Find the highest health minion among living_enemy_minions
-        highest_health_minion = living_enemy_minions[0]
-        for i in range(1, len(living_enemy_minions)):
-            current_minion = living_enemy_minions[i]
-            if current_minion.get_health() > highest_health_minion.get_health():
-                highest_health_minion = current_minion
-            # If healths are tied, highest_health_minion (being earlier in the list) 
-            # is already the "leftmost" of those encountered with max health.
-        
-        return highest_health_minion
+        if not enemy_minions:  # No enemy minions, target enemy hero
+            return enemy_hero
+        # Find the enemy minion with the highest health
+        enemy_minions_health = [e.get_health() for e in enemy_minions]
+        highest_health = max(enemy_minions_health)
+        highest_health_entities = [e for e in enemy_minions if e.get_health() == highest_health]
+        return highest_health_entities[0]  # Return the leftmost minion with highest health
+    
 
 # Task 11
 class HearthModel():
@@ -643,17 +632,19 @@ class HearthModel():
 
         # 2. Enemy hero: new turn sequence
         self.enemy.new_turn()
-        # if not self.enemy.is_alive(): return enemy_played_card_names # Check after draw
-        if self.enemy.get_health() <= 0: return enemy_played_card_names # TEST: Check only health for turn continuation
+        
+        # If the enemy hero is not alive after drawing cards, they do not take a turn.
+        if not self.enemy.is_alive():
+            return enemy_played_card_names
 
         # 3. Enemy hero plays cards
         still_can_play = True
-        while still_can_play: # Loop to allow restarting hand scan
-            if not self.enemy.is_alive(): break
+        while still_can_play: 
+            if not self.enemy.is_alive(): break # Stop if enemy becomes not alive during card play
             played_a_card_this_scan = False
             
             hand_index = 0
-            while hand_index < len(self.enemy.get_hand()): # Iterate through current hand
+            while hand_index < len(self.enemy.get_hand()): 
                 card_to_play = self.enemy.get_hand()[hand_index]
 
                 if card_to_play.get_cost() > self.enemy.get_energy():
@@ -661,40 +652,37 @@ class HearthModel():
                     continue
 
                 chosen_target_for_enemy_spell = None
-                if not card_to_play.is_permanent(): # Spell card targeting
+                if not card_to_play.is_permanent(): 
                     effect = card_to_play.get_effect()
                     if DAMAGE in effect and self.player.is_alive():
                         chosen_target_for_enemy_spell = self.player
-                    elif self.enemy.is_alive(): # Otherwise, target self if alive
+                    elif self.enemy.is_alive(): 
                         chosen_target_for_enemy_spell = self.enemy
-                # For permanent cards, target for enemy_play_card is effectively the board slot;
-                # on-play effects use minion's own choose_target.
-
+                
                 if self.enemy_play_card(card_to_play, chosen_target_for_enemy_spell):
                     enemy_played_card_names.append(card_to_play.get_name())
                     played_a_card_this_scan = True
-                    # Successfully played a card, restart scan from the beginning of the (modified) hand
-                    break  # Breaks from inner while (hand_index loop)
+                    break 
                 else:
-                    hand_index += 1 # Could not play this card, try next
+                    hand_index += 1 
 
-            if not played_a_card_this_scan: # Full scan of hand, no card played
-                still_can_play = False # Exit outer while loop
+            if not played_a_card_this_scan: 
+                still_can_play = False 
 
             if self.has_won() or self.has_lost(): return enemy_played_card_names
         
         # 4. Enemy's minions attack
         for minion in list(self.get_enemy_minions()): # Iterate copy
             if not minion.is_alive(): continue
-            if not self.player.is_alive() and not any(m.is_alive() for m in self.active_player_minions): break # No valid targets
+            # Ensure there's a valid target (player hero or player minions)
+            if not self.player.is_alive() and not any(m.is_alive() for m in self.active_player_minions): break 
             target = minion.choose_target(self.enemy, self.player, self.active_enemy_minions, self.active_player_minions)
             if target:
                 apply_effects_and_handle_deaths(minion.get_effect(), target, self)
             if self.has_won() or self.has_lost(): return enemy_played_card_names
 
-        # 5. Player: new turn sequence (if game not over)
-        # if self.player.is_alive() and not (self.has_won() or self.has_lost()):
-        if self.player.get_health() > 0 and not (self.has_won() or self.has_lost()): # TEST
+        # 5. Player: new turn sequence (if game not over and player is alive)
+        if self.player.is_alive() and not (self.has_won() or self.has_lost()):
             self.player.new_turn()
 
         return enemy_played_card_names
