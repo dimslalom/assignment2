@@ -363,37 +363,17 @@ class Wyrm(Minion):
         If multiple entities have the lowest health, if one of the tied entities is the allied hero,
         the allied hero should be selected. Otherwise, the leftmost tied minion should be selected.
         """
-        potential_targets = []
+        ally_minions = [m for m in ally_minions]
+        all_ally_entities = [ally_hero] + ally_minions
         
-        # Create a list of all allied entities to consider
-        all_allies = []
-        if self in ally_minions: # Ensure the Wyrm itself is considered if it's on the board
-            all_allies.extend(ally_minions)
-        else: # If the Wyrm is not in ally_minions
-            all_allies.append(self) # Add itself
-            all_allies.extend(ally_minions) # Then other minions
-        
-        all_allies.append(ally_hero)
-
-        if not all_allies:
-            return None # Should not happen if Wyrm or hero exists
-
-        min_health_entity = all_allies[0] # Start with the first ally
-
-        for i in range(1, len(all_allies)):
-            current_entity = all_allies[i]
-            if current_entity.get_health() < min_health_entity.get_health():
-                min_health_entity = current_entity
-            elif current_entity.get_health() == min_health_entity.get_health():
-                # Tie-breaking:
-                # 1. If current_entity is Hero and min_health_entity is not Hero, prefer current_entity (Hero).
-                if isinstance(current_entity, Hero) and not isinstance(min_health_entity, Hero):
-                    min_health_entity = current_entity
-                # 2. If both are Minions, min_health_entity (being earlier in the list) is already the leftmost.
-                # 3. If min_health_entity is Hero and current_entity is Minion, keep Hero (already preferred).
-                # No change needed for cases 2 and 3 due to iteration order and hero preference.
-        
-        return min_health_entity
+        # Find the entity with the lowest health
+        all_ally_entities_health = [e.get_health() for e in all_ally_entities]
+        lowest_health = min(all_ally_entities_health)
+        lowest_health_entities = [e for e in all_ally_entities if e.get_health() == lowest_health]
+        if ally_hero in lowest_health_entities:
+            # If the allied hero is among the lowest health entities, return it
+            return ally_hero
+        return lowest_health_entities[0]  # Return the leftmost minion with lowest health    
 
 # Task 10
 class Raptor(Minion):
@@ -663,7 +643,8 @@ class HearthModel():
 
         # 2. Enemy hero: new turn sequence
         self.enemy.new_turn()
-        if not self.enemy.is_alive(): return enemy_played_card_names # Check after draw
+        # if not self.enemy.is_alive(): return enemy_played_card_names # Check after draw
+        if self.enemy.get_health() <= 0: return enemy_played_card_names # TEST: Check only health for turn continuation
 
         # 3. Enemy hero plays cards
         still_can_play = True
@@ -712,7 +693,8 @@ class HearthModel():
             if self.has_won() or self.has_lost(): return enemy_played_card_names
 
         # 5. Player: new turn sequence (if game not over)
-        if self.player.is_alive() and not (self.has_won() or self.has_lost()):
+        # if self.player.is_alive() and not (self.has_won() or self.has_lost()):
+        if self.player.get_health() > 0 and not (self.has_won() or self.has_lost()): # TEST
             self.player.new_turn()
 
         return enemy_played_card_names
