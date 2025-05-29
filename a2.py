@@ -424,15 +424,24 @@ class Raptor(Minion):
         The Raptor will choose the enemy minion with the highest health. 
         If there is no such minion, select the enemy hero. Leftmost minion is selected in case of a tie.
         """
-        max_health_entity = enemy_hero
-        for entity in enemy_minions:
-            if entity.get_health() > max_health_entity.get_health():
-                max_health_entity = entity
-            elif entity.get_health() == max_health_entity.get_health():
-                # If the health is the same, prefer the leftmost minion
-                if isinstance(entity, Minion) and not isinstance(max_health_entity, Minion):
-                    max_health_entity = entity
-        return max_health_entity
+        living_enemy_minions = [m for m in enemy_minions if m.is_alive()]
+
+        if not living_enemy_minions:
+            # No living enemy minions, target the enemy hero.
+            # Consider if enemy_hero must be alive to be targeted, based on game rules/tests.
+            # If enemy_hero must be alive: if enemy_hero.is_alive(): return enemy_hero else: return None
+            return enemy_hero 
+
+        # Find the highest health minion among living_enemy_minions
+        highest_health_minion = living_enemy_minions[0]
+        for i in range(1, len(living_enemy_minions)):
+            current_minion = living_enemy_minions[i]
+            if current_minion.get_health() > highest_health_minion.get_health():
+                highest_health_minion = current_minion
+            # If healths are tied, highest_health_minion (being earlier in the list) 
+            # is already the "leftmost" of those encountered with max health.
+        
+        return highest_health_minion
 
 # Task 11
 class HearthModel():
@@ -638,7 +647,6 @@ class HearthModel():
         enemy_played_card_names = []
 
         def apply_effects_and_handle_deaths(effect_dict: dict, target_entity: Entity, model_self: 'HearthModel'):
-            model_self.remove_defeated_entities()
             if target_entity and effect_dict:
                 if HEALTH in effect_dict: target_entity.apply_health(effect_dict[HEALTH])
                 if SHIELD in effect_dict: target_entity.apply_shield(effect_dict[SHIELD])
