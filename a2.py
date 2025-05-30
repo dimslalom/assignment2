@@ -13,8 +13,7 @@ class Card():
         """
         Initializes a card with the given attributes.
         """
-        super().__init__(**kwargs) # This will call object.__init__() if Card is the direct child of object
-                                   # or the next class in MRO for multiple inheritance.
+        super().__init__(**kwargs) # Call super to ensure any parent class initialization is done
         self.name = _name
         self.description = _description
         self.cost = _cost
@@ -70,7 +69,7 @@ class Shield(Card):
                          _effect={SHIELD: 5}, 
                          **kwargs)
         # name, description, cost, effect are set by Card's __init__
-    def get_symbol(self) -> str: # ADD THIS METHOD BACK
+    def get_symbol(self) -> str: 
         return SHIELD_SYMBOL
 
 # Task 3
@@ -84,7 +83,7 @@ class Heal(Card):
                          _cost=2, 
                          _effect={HEALTH: 2}, 
                          **kwargs)
-    def get_symbol(self) -> str: # ADD THIS METHOD BACK
+    def get_symbol(self) -> str: 
         return HEAL_SYMBOL
 
 # Task 4
@@ -99,7 +98,6 @@ class Fireball(Card):
                          _effect={DAMAGE: (3 + turns_in_hand)}, 
                          **kwargs)
         self.turns_in_hand = turns_in_hand
-        # Effect is already set by super().__init__ but we need to update it
         # if turns_in_hand changes, so let's re-set it here too for clarity or handle in increment_turn
         self.effect = {DAMAGE: (3 + self.turns_in_hand)} # Ensure this is dynamic
     def increment_turn(self) -> None:
@@ -169,7 +167,7 @@ class CardDeck():
 # Task 6
 class Entity(): 
     def __init__(self, health: int, shield: int, **kwargs):
-        super().__init__(**kwargs) # Calls object.__init__() or next in MRO
+        super().__init__(**kwargs)
         self.health = health
         self.shield = shield
     def __repr__(self):
@@ -236,7 +234,7 @@ class Hero(Entity):
         Initialize Hero with health, shield, energy, deck, and hand.
         """
         # Hero only inherits from Entity. Entity's __init__ expects health, shield.
-        super().__init__(health=health, shield=shield) # No **kwargs needed here if Hero is the end of its specific chain
+        super().__init__(health=health, shield=shield) 
         self.max_energy = max_energy
         self.energy = max_energy
         self.deck = deck
@@ -310,7 +308,6 @@ class Hero(Entity):
 class Minion(Card, Entity):
     def __init__(self, health: int, shield: int):
         # Call super() to initialize both Card and Entity parts correctly.
-        # Card's __init__ will be called, then Entity's __init__ via Card's super() and MRO.
         super().__init__(_name=MINION_NAME, 
                          _description=MINION_DESC, 
                          _cost=2, 
@@ -354,10 +351,10 @@ class Wyrm(Minion):
     If multiple entities have the lowest health, if one of the tied entities is the allied hero, the allied hero should be selected. Otherwise, the leftmost tied minion should be selected.
     """
     def __init__(self, health: int, shield: int):
-        super().__init__(health=health, shield=shield) # Minion's __init__ handles Card and Entity parts
+        super().__init__(health=health, shield=shield) 
         self.name = WYRM_NAME
         self.description = WYRM_DESC
-        self.cost = 2 # Minion already sets cost to 2, but explicit is fine
+        self.cost = 2 
         self.effect = {HEALTH: 1, SHIELD: 1}
     def get_symbol(self) -> str:
         """
@@ -393,17 +390,16 @@ class Raptor(Minion):
         self.name = RAPTOR_NAME
         self.description = RAPTOR_DESC
         self.cost = 2
-        # Effect for Raptor is a method (get_effect), so no self.effect assignment here.
     
-    # ADD THIS METHOD:
+   
     def get_symbol(self) -> str:
         return RAPTOR_SYMBOL
 
-    # Ensure get_effect is correctly overridden (it was in your original file, ensure it's still there):
+    
     def get_effect(self) -> dict[str, int]:
         return {DAMAGE: self.get_health()}
 
-    # choose_target seems okay but we'll re-verify if the symbol/effect fixes don't resolve its test.
+    
     def choose_target(self, ally_hero: Entity, enemy_hero: Entity, ally_minions: list[Entity], enemy_minions: list[Entity]) -> Entity:
         # Filter for living enemy minions first
         living_enemy_minions = [m for m in enemy_minions if m.is_alive()]
@@ -846,9 +842,12 @@ class Hearthstone():
             lower_input_str = raw_input_str.lower()
 
             # Check for exact match commands that take no variable arguments
-            if lower_input_str == HELP_COMMAND or lower_input_str == END_TURN_COMMAND:
-                return lower_input_str
+            is_help = lower_input_str == HELP_COMMAND
+            is_end_turn = lower_input_str == END_TURN_COMMAND
 
+            if is_help or is_end_turn:
+                return lower_input_str
+            
             # If not an exact match, then check for commands that take arguments
             command_parts = lower_input_str.split(maxsplit=1)
             command_action = command_parts[0]
@@ -871,6 +870,7 @@ class Hearthstone():
 
             # If no valid command format was matched, it's invalid
             self.update_display([INVALID_COMMAND])
+            
 
 
     def get_target_entity(self) -> str:
@@ -955,7 +955,6 @@ class Hearthstone():
         self.filepath_for_repr = file_path # Update for repr
 
     def play(self):
-        """Manages the main game loop and player interaction."""
         current_messages = [WELCOME_MESSAGE]
 
         while True:
@@ -971,79 +970,86 @@ class Hearthstone():
                 self.update_display(current_messages)
                 break
 
-            full_command_str = self.get_command()
-            command_parts = full_command_str.split(maxsplit=1)
-            command_action = command_parts[0]
-            argument = command_parts[1] if len(command_parts) > 1 else None
-
-            if command_action == HELP_COMMAND:
+            full_command_str = self.get_command() # This will be 'help' or 'end turn' or 'play 1', etc.
+            
+            # First, check for exact match, full-phrase commands
+            if full_command_str == HELP_COMMAND:
                 current_messages.extend(HELP_MESSAGES)
-
-            elif command_action == END_TURN_COMMAND:
+            elif full_command_str == END_TURN_COMMAND:
                 played_card_names = self.model.end_turn()
                 for name in played_card_names:
                     current_messages.append(ENEMY_PLAY_MESSAGE + name)
                 
-                # Save only if the game hasn't ended.
                 if not (self.model.has_won() or self.model.has_lost()):
                     self.save_game()
-            elif command_action == PLAY_COMMAND:
-                card_idx_one_based = int(argument)
-                card_idx_zero_based = card_idx_one_based - 1
+                    current_messages.append(GAME_SAVE_MESSAGE)
+            else:
+                # This 'else' block is entered if full_command_str is NOT "help" or "end turn".
+                # Therefore, command_action and argument will be defined here.
+                command_parts = full_command_str.split(maxsplit=1)
+                command_action = command_parts[0]
+                argument = command_parts[1] if len(command_parts) > 1 else None 
                 
-                player_hand = self.model.get_player().get_hand()
-                if 0 <= card_idx_zero_based < len(player_hand):
-                    card_to_play = player_hand[card_idx_zero_based]
-                    target_entity_object = None
+                if command_action == PLAY_COMMAND:
+                    # Simplified PLAY logic (assuming get_command ensures argument is valid digit)
+                    card_idx_one_based = int(argument)
+                    card_idx_zero_based = card_idx_one_based - 1
                     
-                    if not card_to_play.is_permanent():
+                    player_hand = self.model.get_player().get_hand()
+                    # get_command should ensure card_idx_one_based is valid, so this check might be redundant too
+                    if 0 <= card_idx_zero_based < len(player_hand): 
+                        card_to_play = player_hand[card_idx_zero_based]
+                        target_entity_object = None
                         
-                        target_identifier = self.get_target_entity()
-                        target_entity_object = self.get_entity_from_identifier(target_identifier)
-                        # If the target entity is None, it means the identifier was invalid
-                        if target_entity_object is None: 
-                            current_messages.append(INVALID_ENTITY)
-                            continue 
-
-
-                    if self.model.play_card(card_to_play, target_entity_object):
-                        current_messages.append(PLAY_MESSAGE + card_to_play.get_name())
+                        if not card_to_play.is_permanent():
+                            target_identifier = self.get_target_entity()
+                            target_entity_object = self.get_entity_from_identifier(target_identifier)
+                            if target_entity_object is None: 
+                                current_messages.append(INVALID_ENTITY)
+                                continue # Important to use continue to restart the loop if target is invalid
+                        
+                        if self.model.play_card(card_to_play, target_entity_object):
+                            current_messages.append(PLAY_MESSAGE + card_to_play.get_name())
+                        else:
+                            current_messages.append(ENERGY_MESSAGE)
                     else:
-                        current_messages.append(ENERGY_MESSAGE)
+                        # This else implies get_command let an invalid card index through,
+                        # or the hand changed unexpectedly.
+                        current_messages.append(INVALID_COMMAND) 
+                
+                elif command_action == DISCARD_COMMAND:
+                    card_idx_one_based = int(argument)
+                    card_idx_zero_based = card_idx_one_based - 1
+                    player_hand = self.model.get_player().get_hand()
+
+                    if 0 <= card_idx_zero_based < len(player_hand):
+                        card_to_discard = player_hand[card_idx_zero_based]
+                        card_name = card_to_discard.get_name()
+                        self.model.discard_card(card_to_discard)
+                        current_messages.append(DISCARD_MESSAGE + card_name)
+                    else:
+                        current_messages.append(INVALID_COMMAND)
+
+                elif command_action == LOAD_COMMAND:
+                    file_to_load = argument
+                    try:
+                        current_filepath = self.filepath # Store current filepath before attempting load
+                        self.load_game(file_to_load)
+                        current_messages.append(GAME_LOAD_MESSAGE + file_to_load)
+                    except FileNotFoundError:
+                        # If the file is not found, we catch the error and display a message.
+                        current_messages.append(file_to_load + NO_FILE_MESSAGE) 
+
+                    except (ValueError, IndexError) as e:
+
+                        # If the file is malformed, we catch the error and display a message.
+                        current_messages.append(BAD_FILE_MESSAGE + str(e))
+                        pass
                 else:
-                    current_messages.append(INVALID_COMMAND) # Invalid card index
-            
-            elif command_action == DISCARD_COMMAND:
-                card_idx_one_based = int(argument)
-                card_idx_zero_based = card_idx_one_based - 1
-                player_hand = self.model.get_player().get_hand()
-
-                if 0 <= card_idx_zero_based < len(player_hand):
-                    card_to_discard = player_hand[card_idx_zero_based]
-                    card_name = card_to_discard.get_name()
-                    self.model.discard_card(card_to_discard)
-                    current_messages.append(DISCARD_MESSAGE + card_name)
-                else:
-                    current_messages.append(INVALID_COMMAND) # Invalid card index
-
-            elif command_action == LOAD_COMMAND:
-                file_to_load = argument
-                try:
-                    # Attempt to load the game from the specified file
-                    current_filepath = self.filepath
-
-                    self.load_game(file_to_load)
-                    # This message only appears on a fully successful load.
-                    current_messages.append(GAME_LOAD_MESSAGE + file_to_load)
-
-                except FileNotFoundError:
+                    # This 'else' is for when the *split* command_action isn't 'play', 'discard', or 'load'.
+                    # Since get_command validates formats, this implies an issue or an unhandled valid command.
+                    # No message needed here if get_command already handled invalid_command.
                     pass
-                except (ValueError, IndexError):
-                    # "nothing happens" on malformed file.
-                    # This means we must revert the model to its previous state.
-                    self.load_game(current_filepath)
-                    pass
-
 
 def play_game(initial_save_file: str) -> None:
     """
