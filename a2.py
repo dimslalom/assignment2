@@ -9,14 +9,16 @@ from display import HearthView
 
 # Task 1
 class Card():
-    def __init__(self, **kwargs):
+    def __init__(self, _name=CARD_NAME, _description=CARD_DESC, _cost=1, _effect={}, **kwargs):
         """
         Initializes a card with the given attributes.
         """
-        self.name = kwargs.get("_name", CARD_NAME)
-        self.description = kwargs.get("_description", CARD_DESC)
-        self.cost = kwargs.get("_cost", 1)
-        self.effect = kwargs.get("_effect", {})
+        super().__init__(**kwargs) # This will call object.__init__() if Card is the direct child of object
+                                   # or the next class in MRO for multiple inheritance.
+        self.name = _name
+        self.description = _description
+        self.cost = _cost
+        self.effect = _effect
     def __str__(self) -> str:
         """
         Returns the name and description of this card
@@ -58,19 +60,17 @@ class Card():
     
 # Task 2
 class Shield(Card):
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs): # kwargs will be passed to Card's __init__
         """
         Initializes a shield card with the given attributes.
         """
-        super().__init__(**kwargs)
-        self.name = SHIELD_NAME
-        self.description = SHIELD_DESC
-        self.cost = 1
-        self.effect = {SHIELD: 5}
-    def get_symbol(self) -> str:
-        """
-        Returns the symbol of this card.
-        """
+        super().__init__(_name=SHIELD_NAME, 
+                         _description=SHIELD_DESC, 
+                         _cost=1, 
+                         _effect={SHIELD: 5}, 
+                         **kwargs)
+        # name, description, cost, effect are set by Card's __init__
+    def get_symbol(self) -> str: # ADD THIS METHOD BACK
         return SHIELD_SYMBOL
 
 # Task 3
@@ -79,15 +79,12 @@ class Heal(Card):
         """
         Initializes a heal card with the given attributes.
         """
-        super().__init__(**kwargs)
-        self.name = HEAL_NAME
-        self.description = HEAL_DESC
-        self.cost = 2
-        self.effect = {HEALTH: 2}
-    def get_symbol(self) -> str:
-        """
-        Returns the symbol of this card.
-        """
+        super().__init__(_name=HEAL_NAME, 
+                         _description=HEAL_DESC, 
+                         _cost=2, 
+                         _effect={HEALTH: 2}, 
+                         **kwargs)
+    def get_symbol(self) -> str: # ADD THIS METHOD BACK
         return HEAL_SYMBOL
 
 # Task 4
@@ -96,12 +93,15 @@ class Fireball(Card):
         """
         Initializes a fireball card with the given attributes.
         """
-        super().__init__(**kwargs)
+        super().__init__(_name=FIREBALL_NAME, 
+                         _description=FIREBALL_DESC, 
+                         _cost=3, 
+                         _effect={DAMAGE: (3 + turns_in_hand)}, 
+                         **kwargs)
         self.turns_in_hand = turns_in_hand
-        self.name = FIREBALL_NAME
-        self.description = FIREBALL_DESC
-        self.cost = 3
-        self.effect = {DAMAGE: (3 + turns_in_hand)}
+        # Effect is already set by super().__init__ but we need to update it
+        # if turns_in_hand changes, so let's re-set it here too for clarity or handle in increment_turn
+        self.effect = {DAMAGE: (3 + self.turns_in_hand)} # Ensure this is dynamic
     def increment_turn(self) -> None:
         """
         Increments the number of turns this card has been in hand.
@@ -168,10 +168,8 @@ class CardDeck():
 
 # Task 6
 class Entity(): 
-    def __init__(self, health: int, shield: int):
-        """
-        Initializes an entity with the given health and shield.
-        """
+    def __init__(self, health: int, shield: int, **kwargs):
+        super().__init__(**kwargs) # Calls object.__init__() or next in MRO
         self.health = health
         self.shield = shield
     def __repr__(self):
@@ -237,7 +235,8 @@ class Hero(Entity):
         """
         Initialize Hero with health, shield, energy, deck, and hand.
         """
-        super().__init__(health, shield)
+        # Hero only inherits from Entity. Entity's __init__ expects health, shield.
+        super().__init__(health=health, shield=shield) # No **kwargs needed here if Hero is the end of its specific chain
         self.max_energy = max_energy
         self.energy = max_energy
         self.deck = deck
@@ -310,12 +309,16 @@ class Hero(Entity):
 # Task 8
 class Minion(Card, Entity):
     def __init__(self, health: int, shield: int):
-        super().__init__(health = health, shield = shield)
-        self.health = health
-        self.shield = shield
-        self.cost = 2
-        self.name = MINION_NAME
-        self.description = MINION_DESC
+        # Call super() to initialize both Card and Entity parts correctly.
+        # Card's __init__ will be called, then Entity's __init__ via Card's super() and MRO.
+        super().__init__(_name=MINION_NAME, 
+                         _description=MINION_DESC, 
+                         _cost=2, 
+                         _effect={}, 
+                         health=health, 
+                         shield=shield)
+        # The attributes (name, desc, cost, effect, health, shield)
+        # are set by the respective parent initializers.
     def __str__(self) -> str:
         """
         Returns the name and description of this card
@@ -351,10 +354,10 @@ class Wyrm(Minion):
     If multiple entities have the lowest health, if one of the tied entities is the allied hero, the allied hero should be selected. Otherwise, the leftmost tied minion should be selected.
     """
     def __init__(self, health: int, shield: int):
-        super().__init__(health, shield)
+        super().__init__(health=health, shield=shield) # Minion's __init__ handles Card and Entity parts
         self.name = WYRM_NAME
         self.description = WYRM_DESC
-        self.cost = 2
+        self.cost = 2 # Minion already sets cost to 2, but explicit is fine
         self.effect = {HEALTH: 1, SHIELD: 1}
     def get_symbol(self) -> str:
         """
@@ -386,35 +389,32 @@ class Raptor(Minion):
     effect is to apply damage equal to it's health
     """
     def __init__ (self, health: int, shield: int):
-        super().__init__(health, shield)
+        super().__init__(health=health, shield=shield)
         self.name = RAPTOR_NAME
         self.description = RAPTOR_DESC
         self.cost = 2
-
-    def get_effect(self) -> dict[str, int]:
-        """
-        Returns the effect of this card, with damage equal to current health.
-        """
-        return {DAMAGE: self.get_health()} # Dynamically uses current health
-
-    def get_symbol(self) -> str:
-        """
-        Returns the symbol of this card.
-        """
-        return RAPTOR_SYMBOL
-    def choose_target(self, ally_hero: Entity, enemy_hero: Entity, ally_minions: list[Entity], enemy_minions: list[Entity]) -> Entity:
-        """
-        The Raptor will choose the enemy minion with the highest health. 
-        If there is no such minion, select the enemy hero. Leftmost minion is selected in case of a tie.
-        """
-        if not enemy_minions:  # No enemy minions, target enemy hero
-            return enemy_hero
-        # Find the enemy minion with the highest health
-        enemy_minions_health = [e.get_health() for e in enemy_minions]
-        highest_health = max(enemy_minions_health)
-        highest_health_entities = [e for e in enemy_minions if e.get_health() == highest_health]
-        return highest_health_entities[0]  # Return the leftmost minion with highest health
+        # Effect for Raptor is a method (get_effect), so no self.effect assignment here.
     
+    # ADD THIS METHOD:
+    def get_symbol(self) -> str:
+        return RAPTOR_SYMBOL
+
+    # Ensure get_effect is correctly overridden (it was in your original file, ensure it's still there):
+    def get_effect(self) -> dict[str, int]:
+        return {DAMAGE: self.get_health()}
+
+    # choose_target seems okay but we'll re-verify if the symbol/effect fixes don't resolve its test.
+    def choose_target(self, ally_hero: Entity, enemy_hero: Entity, ally_minions: list[Entity], enemy_minions: list[Entity]) -> Entity:
+        # Filter for living enemy minions first
+        living_enemy_minions = [m for m in enemy_minions if m.is_alive()]
+        if not living_enemy_minions:
+            return enemy_hero # Target enemy hero if no living enemy minions
+        
+        # Find the enemy minion with the highest health among living ones
+        enemy_minions_health = [e.get_health() for e in living_enemy_minions]
+        highest_health = max(enemy_minions_health)
+        highest_health_entities = [e for e in living_enemy_minions if e.get_health() == highest_health]
+        return highest_health_entities[0]  # Return the leftmost living minion with highest health
 
 # Task 11
 class HearthModel():
@@ -837,6 +837,12 @@ class Hearthstone():
         """
         while True:
             raw_input_str = input(COMMAND_PROMPT).strip()
+
+             # Check for empty input
+            if not raw_input_str:
+                self.update_display([INVALID_COMMAND])
+                continue
+
             lower_input_str = raw_input_str.lower()
 
             # Check for exact match commands that take no variable arguments
@@ -875,35 +881,34 @@ class Hearthstone():
         while True:
             identifier_input = input(ENTITY_PROMPT).strip().upper()
 
+            # Check for Hero selection
             if identifier_input == PLAYER_SELECT or identifier_input == ENEMY_SELECT:
-                # Check if heroes are targetable (e.g., alive)
-                # For simplicity and based on prompt, assume M/O are valid if entered.
                 return identifier_input
 
+            # Check for Minion selection by number
             if identifier_input.isdigit():
                 num = int(identifier_input)
-                if 1 <= num <= MAX_MINIONS: # Enemy minion slots 1-5
-                    idx = num - 1 # 0-indexed
-                    if idx < len(self.model.get_enemy_minions()) and self.model.get_enemy_minions()[idx].is_alive():
-                        return ENEMY_SELECT + str(idx)
-                elif MAX_MINIONS < num <= MAX_MINIONS * 2: # Player minion slots 6-10
-                    idx = num - MAX_MINIONS - 1 # 0-indexed for player minions list
-                    if idx < len(self.model.get_player_minions()) and self.model.get_player_minions()[idx].is_alive():
-                        return PLAYER_SELECT + str(idx)
-            
-            self.update_display([INVALID_ENTITY])
-    # Add this entire method inside your Hearthstone class
+                
+                if 1 <= num <= MAX_MINIONS: # Enemy minions are 1 through MAX_MINIONS
+                    idx = num - 1 
+                    if idx < len(self.model.get_enemy_minions()):
+                        return ENEMY_SELECT + str(idx) # e.g. O0, O1, ...
+                
+                elif MAX_MINIONS < num <= MAX_MINIONS * 2: # Player minions are MAX_MINIONS + 1 through MAX_MINIONS * 2
+                    idx = num - MAX_MINIONS - 1 
+                    if idx < len(self.model.get_player_minions()):
+                        return PLAYER_SELECT + str(idx) # e.g. M0, M1, ...
+                
+                # If here, digit was entered but not a valid/existing minion
+                self.update_display([INVALID_ENTITY])
+                # continue loop
+            else: # Not 'M', 'O', or a digit
+                self.update_display([INVALID_ENTITY])
+
 
     def get_entity_from_identifier(self, identifier: str) -> Entity | None:
         """
         Translates a string identifier into the corresponding Entity object.
-
-        Args:
-            identifier (str): The string identifier (e.g., 'M', 'O', 'M0', 'O2').
-
-        Returns:
-            Entity | None: The corresponding Hero or Minion object, or None if
-                        the identifier is invalid.
         """
         if identifier == PLAYER_SELECT:
             return self.model.get_player()
@@ -955,7 +960,7 @@ class Hearthstone():
 
         while True:
             self.update_display(current_messages)
-            current_messages = [] # Clear messages for the next action/turn
+            current_messages = [] 
 
             if self.model.has_won():
                 current_messages.append(WIN_MESSAGE)
@@ -973,12 +978,15 @@ class Hearthstone():
 
             if command_action == HELP_COMMAND:
                 current_messages.extend(HELP_MESSAGES)
+
             elif command_action == END_TURN_COMMAND:
                 played_card_names = self.model.end_turn()
                 for name in played_card_names:
                     current_messages.append(ENEMY_PLAY_MESSAGE + name)
-                self.save_game() # Save after turn ends
-                current_messages.append(GAME_SAVE_MESSAGE)
+                
+                # Save only if the game hasn't ended.
+                if not (self.model.has_won() or self.model.has_lost()):
+                    self.save_game()
             elif command_action == PLAY_COMMAND:
                 card_idx_one_based = int(argument)
                 card_idx_zero_based = card_idx_one_based - 1
@@ -988,17 +996,18 @@ class Hearthstone():
                     card_to_play = player_hand[card_idx_zero_based]
                     target_entity_object = None
                     
-                    if not card_to_play.is_permanent(): # Spell card, needs a target
+                    if not card_to_play.is_permanent():
+                        
                         target_identifier = self.get_target_entity()
                         target_entity_object = self.get_entity_from_identifier(target_identifier)
-                        if target_entity_object is None: # Should not occur if get_target_entity is robust
-                             current_messages.append(INVALID_ENTITY)
-                             continue # Restart command input
+                        # If the target entity is None, it means the identifier was invalid
+                        if target_entity_object is None: 
+                            current_messages.append(INVALID_ENTITY)
+                            continue 
+
 
                     if self.model.play_card(card_to_play, target_entity_object):
                         current_messages.append(PLAY_MESSAGE + card_to_play.get_name())
-                        self.save_game()
-                        current_messages.append(GAME_SAVE_MESSAGE)
                     else:
                         current_messages.append(ENERGY_MESSAGE)
                 else:
@@ -1011,38 +1020,44 @@ class Hearthstone():
 
                 if 0 <= card_idx_zero_based < len(player_hand):
                     card_to_discard = player_hand[card_idx_zero_based]
-                    # Ensure card is actually removed by model.discard_card before getting name
-                    # Or get name first. Let's get name first.
                     card_name = card_to_discard.get_name()
                     self.model.discard_card(card_to_discard)
                     current_messages.append(DISCARD_MESSAGE + card_name)
-                    self.save_game()
-                    current_messages.append(GAME_SAVE_MESSAGE)
                 else:
                     current_messages.append(INVALID_COMMAND) # Invalid card index
 
             elif command_action == LOAD_COMMAND:
                 file_to_load = argument
                 try:
+                    # Attempt to load the game from the specified file
+                    current_filepath = self.filepath
+
                     self.load_game(file_to_load)
-                    # Only add the success message if loading works
+                    # This message only appears on a fully successful load.
                     current_messages.append(GAME_LOAD_MESSAGE + file_to_load)
-                except (FileNotFoundError, IndexError, ValueError):
-                    # Catch errors from file not existing or being invalid.
-                    # As per the spec, "nothing happens", so we just add a
-                    # failure message for the user.
-                    current_messages.append(LOAD_FAILURE_MESSAGE)
+
+                except FileNotFoundError:
+                    pass
+                except (ValueError, IndexError):
+                    # "nothing happens" on malformed file.
+                    # This means we must revert the model to its previous state.
+                    self.load_game(current_filepath)
+                    pass
 
 
 def play_game(initial_save_file: str) -> None:
     """
     Constructs the Hearthstone controller and starts the game loop.
+    Handles errors on initial load by attempting to use autosave.txt.
     """
-    controller = Hearthstone(initial_save_file)
+    try:
+        # Attempt to create the controller with the given file
+        controller = Hearthstone(initial_save_file)
+    except (FileNotFoundError, ValueError, IndexError):
+        # If that fails, try to load from the autosave file as a backup
+        controller = Hearthstone(SAVE_LOC)
+    
     controller.play()
-
-
-
 def main() -> None:
     """
     Main function to run the Hearthstone game simulation.
